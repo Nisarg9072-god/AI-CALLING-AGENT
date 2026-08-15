@@ -1,67 +1,78 @@
-# Python
+# ── Secrets & credentials ─────────────────────────────
+.env
+.env.local
+.env.*.local
+credentials/
+tokens/
+secrets/
+*.pem
+*.key
+
+# ── Generated audio / voice assets ───────────────────
+data/voices/
+data/audio/
+*.wav
+*.mp3
+*.ogg
+*.opus
+
+# ── SQLite databases ─────────────────────────────────
+data/*.db
+data/*.sqlite
+data/*.sqlite3
+*.db
+*.sqlite
+*.sqlite3
+
+# ── Model cache (faster-whisper, piper) ──────────────
+data/models/
+.cache/
+model_cache/
+whisper_cache/
+
+# ── Execution traces ──────────────────────────────────
+data/traces/
+traces/
+
+# ── Python ───────────────────────────────────────────
 __pycache__/
 *.py[cod]
 *$py.class
 *.so
 .Python
 build/
-develop-eggs/
 dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
 *.egg-info/
-.installed.cfg
-*.egg
-MANIFEST
+.eggs/
 
-# Virtual environments
-.env
-.venv
-env/
+# ── Virtual environments ──────────────────────────────
+.venv/
 venv/
+env/
 ENV/
-env.bak/
-venv.bak/
 
-# IDE
-.idea/
-.vscode/
-*.swp
-*.swo
-
-# Testing
+# ── Testing ───────────────────────────────────────────
 .pytest_cache/
 .coverage
 htmlcov/
 .tox/
-.nox/
 
-# Type checking
+# ── Type checking ─────────────────────────────────────
 .mypy_cache/
-.dmypy.json
-dmypy.json
+.ruff_cache/
 
-# Traces & logs
-traces/
-*.log
-*.jsonl
-
-# Database
-*.db
-*.sqlite
-*.sqlite3
-
-# OS
-.DS_Store
+# ── IDE ───────────────────────────────────────────────
+.vscode/settings.json
+.idea/
+*.swp
+*.swo
+*.DS_Store
 Thumbs.db
 
-# Secrets — NEVER commit these
-.env
-secrets.json
+# ── uv ───────────────────────────────────────────────
+# uv.lock is intentionally tracked (reproducible installs)
+# .python-version is intentionally tracked
+
+# ── Logs ─────────────────────────────────────────────
+*.log
+logs/
