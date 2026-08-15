@@ -14,7 +14,7 @@ import re
 from abc import ABC, abstractmethod
 from typing import Any
 
-from app.agent.decision import AGENT_DECISION_SCHEMA, AgentDecision, ActionType
+from app.agent.decision import DECISION_JSON_SCHEMA, AgentDecision, ActionType
 from app.config import settings
 
 
@@ -153,7 +153,7 @@ class OpenAIProvider(LLMProvider):
                     "json_schema": {
                         "name": "agent_decision",
                         "strict": True,
-                        "schema": AGENT_DECISION_SCHEMA,
+                        "schema": DECISION_JSON_SCHEMA,
                     },
                 },
             )
