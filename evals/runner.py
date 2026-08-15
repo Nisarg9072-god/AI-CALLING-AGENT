@@ -1,210 +1,183 @@
 """
-Eval runner — runs all 9 scenarios and reports pass/fail with traces.
+Evaluation framework — runs scripted scenarios through the real AgentLoop
+and verifies behavioral requirements.
 
-Usage:
-  python -m evals.runner
-  python -m evals.runner --scenario s1_order_status
-  python -m evals.runner --verbose
+Each scenario tests that the agent:
+  - Calls the right tools
+  - Does NOT call forbidden tools
+  - Reaches the expected outcome
+  - Respects guardrails
+
+All scenarios use MockLLMProvider — no API key required.
 """
 
 from __future__ import annotations
 
-import sys
 import time
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import Any
 
-import typer
 from rich.console import Console
-from rich.panel import Panel
 from rich.table import Table
 
-# Force UTF-8 on Windows (legacy cp1252 terminal can't render Unicode symbols)
-if sys.stdout.encoding and sys.stdout.encoding.lower() != "utf-8":
-    try:
-        sys.stdout.reconfigure(encoding="utf-8")
-        sys.stderr.reconfigure(encoding="utf-8")
-    except Exception:
-        pass
+from app.agent.agent import Agent
+from app.agent.decision import ActionType, AgentDecision
+from app.agent.loop import AgentLoop, LoopResult
+from app.agent.state import CallState, TerminationReason
+from app.llm.mock_provider import MockLLMProvider
+from app.tools.factory import build_tool_registry
 
-from app.agent.llm_provider import MockLLMProvider
-from app.agent.state import TerminationReason
-from app.harness.runtime import AgentRuntime
-from evals.scenarios import EvalScenario, get_all_scenarios
-
-app = typer.Typer(name="evals", help="Eval runner for AI Calling Agent", add_completion=False)
 console = Console()
 
 
-# ── EvalResult ─────────────────────────────────────────────────────────────────
+# ── Scenario definition ────────────────────────────────────────────────────────
+
+
+@dataclass
+class EvalScenario:
+    """A single evaluation scenario."""
+    name: str
+    description: str
+    initial_message: str
+    llm_responses: list[AgentDecision]
+
+    # Expected behaviors
+    expected_tools: list[str] = field(default_factory=list)      # must have been called
+    forbidden_tools: list[str] = field(default_factory=list)     # must NOT have been called
+    expected_termination: TerminationReason | None = None
+    expect_verified: bool | None = None                          # None = don't check
+    max_tool_calls: int = 10
+    max_turns: int = 20
+    customer_id: str | None = "C001"
+
+    # Behavioral assertions (optional callables)
+    custom_assertions: list[Any] = field(default_factory=list)
 
 
 @dataclass
 class EvalResult:
+    """Result of running a single scenario."""
     scenario_name: str
     passed: bool
-    failures: list[str] = field(default_factory=list)
-    warnings: list[str] = field(default_factory=list)
-    actual_turns: int = 0
-    actual_tools_called: list[str] = field(default_factory=list)
-    actual_termination: Optional[TerminationReason] = None
-    duration_ms: float = 0.0
+    failures: list[str]
+    turns: int
+    tool_calls_made: list[str]
+    termination_reason: str
+    duration_ms: float
 
 
-# ── Runner ─────────────────────────────────────────────────────────────────────
+# ── Eval runner ────────────────────────────────────────────────────────────────
 
 
 class EvalRunner:
+    """Runs EvalScenarios and reports results."""
+
     def run_scenario(self, scenario: EvalScenario) -> EvalResult:
-        """Run a single scenario and evaluate the result."""
-        start = time.perf_counter()
+        registry = build_tool_registry()
+        provider = MockLLMProvider(scenario.llm_responses)
+        agent = Agent(llm=provider, registry=registry)
+        loop = AgentLoop(agent=agent, registry=registry)
 
-        # Build mock LLM with scripted responses
-        mock_llm = MockLLMProvider(responses=list(scenario.mock_responses))
-        runtime = AgentRuntime(
-            llm_provider=mock_llm,
-            customer_phone=scenario.customer_phone,
-            trace_dir="./traces/evals",
+        state = CallState(
+            customer_id=scenario.customer_id,
+            max_iterations=scenario.max_turns,
+            max_tool_calls=scenario.max_tool_calls,
         )
+        from app.agent.state import MessageRole
+        state.current_user_message = scenario.initial_message
+        state.add_message(MessageRole.USER, scenario.initial_message)
 
-        # Override max_turns for the max_turns guardrail test
-        final_state, trace = runtime.run(
-            initial_message=scenario.initial_message,
-            customer_phone=scenario.customer_phone,
-        )
+        start = time.monotonic()
+        loop.run(state)
+        duration_ms = (time.monotonic() - start) * 1000
 
-        elapsed = (time.perf_counter() - start) * 1000
-        tools_called = [r.tool_name for r in final_state.tool_calls_made]
+        # Collect which tools were actually called
+        tools_called = [r.tool_name for r in state.tool_calls_made]
+        failures: list[str] = []
 
-        result = EvalResult(
-            scenario_name=scenario.name,
-            passed=True,
-            actual_turns=final_state.current_iteration,
-            actual_tools_called=tools_called,
-            actual_termination=final_state.termination_reason,
-            duration_ms=elapsed,
-        )
+        # Check expected tools
+        for tool in scenario.expected_tools:
+            if tool not in tools_called:
+                failures.append(f"Expected tool '{tool}' to be called, but it wasn't.")
 
-        # ── Assertion checks ───────────────────────────────────────────────────
+        # Check forbidden tools
+        for tool in scenario.forbidden_tools:
+            if tool in tools_called:
+                failures.append(f"Forbidden tool '{tool}' was called.")
 
-        # G1: Expected tools were called
-        for expected_tool in scenario.expected_tools:
-            if expected_tool not in tools_called:
-                result.failures.append(
-                    f"Expected tool '{expected_tool}' was NOT called. Called: {tools_called}"
-                )
-
-        # G2: Forbidden tools were not called
-        for forbidden_tool in scenario.forbidden_tools:
-            if forbidden_tool in tools_called:
-                result.failures.append(
-                    f"Forbidden tool '{forbidden_tool}' WAS called. Should not have been."
-                )
-
-        # G3: Expected termination reason
+        # Check termination reason
         if scenario.expected_termination is not None:
-            if final_state.termination_reason != scenario.expected_termination:
-                result.failures.append(
-                    f"Expected termination '{scenario.expected_termination.value}' "
-                    f"but got '{final_state.termination_reason.value}'"
+            if state.termination_reason != scenario.expected_termination:
+                failures.append(
+                    f"Expected termination={scenario.expected_termination.value}, "
+                    f"got={state.termination_reason}"
                 )
 
-        # G4: Minimum turns
-        if final_state.current_iteration < scenario.min_turns:
-            result.failures.append(
-                f"Expected at least {scenario.min_turns} turns, got {final_state.current_iteration}"
-            )
+        # Check verification
+        if scenario.expect_verified is not None:
+            if state.is_verified != scenario.expect_verified:
+                failures.append(
+                    f"Expected is_verified={scenario.expect_verified}, "
+                    f"got={state.is_verified}"
+                )
 
-        # G5: State is terminated (no infinite loops)
-        if not final_state.finished:
-            result.failures.append("Call did not terminate - potential infinite loop!")
+        # Custom assertions
+        for assertion in scenario.custom_assertions:
+            try:
+                assertion(state)
+            except AssertionError as e:
+                failures.append(f"Custom assertion failed: {e}")
 
-        result.passed = len(result.failures) == 0
-        return result
+        return EvalResult(
+            scenario_name=scenario.name,
+            passed=len(failures) == 0,
+            failures=failures,
+            turns=state.current_iteration,
+            tool_calls_made=tools_called,
+            termination_reason=state.termination_reason.value if state.termination_reason else "N/A",
+            duration_ms=duration_ms,
+        )
 
-    def run_all(
-        self,
-        filter_name: str | None = None,
-        verbose: bool = False,
-    ) -> list[EvalResult]:
-        scenarios = get_all_scenarios()
-        if filter_name:
-            scenarios = [s for s in scenarios if filter_name in s.name]
+    def run_all(self, scenarios: list[EvalScenario], verbose: bool = False) -> list[EvalResult]:
         results = []
         for scenario in scenarios:
             result = self.run_scenario(scenario)
             results.append(result)
         return results
 
+    def print_results(self, results: list[EvalResult]) -> None:
+        table = Table(title=f"Eval Results — {len(results)} scenarios", show_lines=True)
+        table.add_column("Scenario", style="cyan", min_width=30)
+        table.add_column("Result", min_width=6)
+        table.add_column("Turns", justify="right")
+        table.add_column("Tools Called")
+        table.add_column("Termination")
+        table.add_column("ms", justify="right")
 
-# ── CLI ────────────────────────────────────────────────────────────────────────
+        passed = sum(1 for r in results if r.passed)
 
-
-def _print_results(results: list[EvalResult], verbose: bool) -> None:
-    table = Table(
-        title=f"Eval Results - {len(results)} scenarios",
-        show_header=True,
-        header_style="bold white",
-        border_style="dim",
-    )
-    table.add_column("Scenario", style="cyan", width=32)
-    table.add_column("Result", width=8, justify="center")
-    table.add_column("Turns", width=6, justify="right")
-    table.add_column("Tools Called", overflow="fold")
-    table.add_column("Termination", width=22)
-    table.add_column("ms", width=6, justify="right")
-
-    for r in results:
-        status = "[bold green]PASS[/bold green]" if r.passed else "[bold red]FAIL[/bold red]"
-        table.add_row(
-            r.scenario_name,
-            status,
-            str(r.actual_turns),
-            ", ".join(r.actual_tools_called) or "-",
-            r.actual_termination.value if r.actual_termination else "?",
-            f"{r.duration_ms:.0f}",
-        )
-
-    console.print()
-    console.print(table)
-
-    if verbose:
         for r in results:
-            if r.failures or r.warnings:
-                console.print(f"\n[bold]{'FAIL' if r.failures else 'WARN'}[/bold]: {r.scenario_name}")
+            status = "[bold green]PASS[/bold green]" if r.passed else "[bold red]FAIL[/bold red]"
+            tools = ", ".join(r.tool_calls_made) if r.tool_calls_made else "-"
+            table.add_row(
+                r.scenario_name,
+                status,
+                str(r.turns),
+                tools[:40],
+                r.termination_reason,
+                f"{r.duration_ms:.0f}",
+            )
+
+        console.print(table)
+
+        # Print failures
+        for r in results:
+            if not r.passed:
+                console.print(f"\n[bold red]FAILURES in '{r.scenario_name}':[/bold red]")
                 for f in r.failures:
-                    console.print(f"  [red]FAIL: {f}[/red]")
-                for w in r.warnings:
-                    console.print(f"  [yellow]WARN: {w}[/yellow]")
+                    console.print(f"  [red]x[/red] {f}")
 
-    passed = sum(1 for r in results if r.passed)
-    failed = len(results) - passed
-    color = "green" if failed == 0 else "red"
-    console.print()
-    console.print(Panel.fit(
-        f"[bold {color}]{passed}/{len(results)} scenarios passed[/bold {color}]"
-        + (f"  •  [red]{failed} failed[/red]" if failed else ""),
-        border_style=color,
-    ))
-    console.print()
-
-
-@app.command()
-def run(
-    scenario: Optional[str] = typer.Option(None, "--scenario", "-s", help="Run a specific scenario by name"),
-    verbose: bool = typer.Option(False, "--verbose", "-v", help="Show failure details"),
-) -> None:
-    """Run all eval scenarios and report results."""
-    console.print("[bold]>> Running AI Calling Agent Evals...[/bold]\n")
-    runner = EvalRunner()
-    results = runner.run_all(filter_name=scenario, verbose=verbose)
-    _print_results(results, verbose=verbose)
-
-    # Exit with non-zero code if any failed (useful for CI)
-    failed = sum(1 for r in results if not r.passed)
-    if failed:
-        raise typer.Exit(code=1)
-
-
-if __name__ == "__main__":
-    app()
+        console.print(
+            f"\n[bold]{'[green]' if passed == len(results) else '[red]'}"
+            f"{passed}/{len(results)} scenarios passed[/bold]"
+        )

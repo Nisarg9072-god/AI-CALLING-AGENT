@@ -1,77 +1,58 @@
-"""
-Customer tools — get_customer, verify_customer.
-"""
-
+"""Customer tools: get_customer, verify_customer."""
 from __future__ import annotations
-
 from typing import Any
+from app.tools.base import BaseTool, ToolContext, ToolResult
+from app.company.service import CompanyService, CompanyServiceError
 
-from app.company.service import get_service
-from app.tools.base import BaseTool, ToolResult
+_svc = CompanyService()
 
 
 class GetCustomerTool(BaseTool):
     name = "get_customer"
     description = (
-        "Retrieve customer account information by customer ID. "
-        "Use this to look up a customer's name, email, phone, and account status."
+        "Look up a customer's profile by their customer ID. "
+        "Returns name, phone, email, and account status. Never returns PIN."
     )
     input_schema = {
         "type": "object",
         "properties": {
-            "customer_id": {
-                "type": "string",
-                "description": "The customer's unique identifier (e.g. C001)",
-            }
+            "customer_id": {"type": "string", "description": "The customer's ID (e.g. C001)"},
         },
         "required": ["customer_id"],
     }
     required_permissions: list[str] = []
 
-    def execute(self, arguments: dict[str, Any], context: dict[str, Any]) -> ToolResult:
+    def execute(self, arguments: dict[str, Any], context: ToolContext) -> ToolResult:
         try:
-            service = get_service()
-            customer = service.get_customer(arguments["customer_id"])
+            customer = _svc.get_customer(arguments["customer_id"])
             return ToolResult.ok(customer, tool_name=self.name)
-        except Exception as exc:
-            return ToolResult.fail(str(exc), tool_name=self.name)
+        except CompanyServiceError as e:
+            return ToolResult.fail(str(e), tool_name=self.name)
 
 
 class VerifyCustomerTool(BaseTool):
     name = "verify_customer"
     description = (
-        "Verify a customer's identity using their 4-digit security PIN. "
-        "Must be called before any sensitive operations. "
+        "Verify a customer's identity by checking their PIN. "
+        "Must be called before any sensitive operation. "
         "Returns verified=true/false."
     )
     input_schema = {
         "type": "object",
         "properties": {
-            "customer_id": {
-                "type": "string",
-                "description": "The customer's unique identifier",
-            },
-            "pin": {
-                "type": "string",
-                "description": "The customer's 4-digit security PIN",
-            },
+            "customer_id": {"type": "string"},
+            "pin": {"type": "string", "description": "The customer's 4-digit PIN"},
         },
         "required": ["customer_id", "pin"],
     }
     required_permissions: list[str] = []
 
-    def execute(self, arguments: dict[str, Any], context: dict[str, Any]) -> ToolResult:
+    def execute(self, arguments: dict[str, Any], context: ToolContext) -> ToolResult:
         try:
-            service = get_service()
-            verified = service.verify_customer(arguments["customer_id"], arguments["pin"])
-            if verified:
-                return ToolResult.ok(
-                    {"verified": True, "message": "Identity verified successfully."},
-                    tool_name=self.name,
-                )
+            verified = _svc.verify_customer(arguments["customer_id"], arguments["pin"])
             return ToolResult.ok(
-                {"verified": False, "message": "Incorrect PIN. Verification failed."},
+                {"verified": verified, "customer_id": arguments["customer_id"]},
                 tool_name=self.name,
             )
-        except Exception as exc:
-            return ToolResult.fail(str(exc), tool_name=self.name)
+        except CompanyServiceError as e:
+            return ToolResult.fail(str(e), tool_name=self.name)
