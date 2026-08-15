@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from app.agent.decision import ActionType, AgentDecision, ValidatedDecision
+from app.agent.decision import ActionType, AgentDecision, ValidationResult
 from app.agent.state import CallState, TerminationReason
 
 
@@ -23,10 +23,10 @@ from app.agent.state import CallState, TerminationReason
 class GuardrailResult:
     allowed: bool
     reason: str = ""
-    validated: ValidatedDecision | None = None
+    validated: ValidationResult | None = None
 
     @classmethod
-    def ok(cls, validated: ValidatedDecision) -> "GuardrailResult":
+    def ok(cls, validated: ValidationResult) -> "GuardrailResult":
         return cls(allowed=True, validated=validated)
 
     @classmethod
@@ -120,7 +120,7 @@ class GuardrailEngine:
         payload = json.dumps({"tool": decision.tool_name or "", "args": args}, sort_keys=True)
         idem_key = hashlib.sha256(payload.encode()).hexdigest()[:16]
 
-        validated = ValidatedDecision(
+        validated = ValidationResult(
             decision=decision,
             idempotency_key=idem_key,
             iteration=state.current_iteration,
