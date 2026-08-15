@@ -82,25 +82,25 @@ PHONE USER
 | Phase | Status |
 |---|---|
 | 1 — Project structure, config, dependencies | ✅ DONE |
-| 2 — State, Observation, Decision models | ⬜ NEXT |
-| 3 — Tool abstraction + tool registry | ⬜ |
-| 4 — SQLite, repositories, company services | ⬜ |
-| 5 — Mistral LLM provider | ⬜ |
-| 6 — Real Agent Loop | ⬜ |
-| 7 — Harness (runtime + policies) | ⬜ |
-| 8 — Guardrails + authorization + idempotency | ⬜ |
-| 9 — Observability + execution traces | ⬜ |
-| 10 — CLI text simulator | ⬜ |
-| 11 — Evaluation framework | ⬜ |
-| 12 — Test suite | ⬜ |
-| 13 — faster-whisper STT | ⬜ |
-| 14 — Piper TTS | ⬜ |
-| 15 — Local voice pipeline | ⬜ |
-| 16 — FastAPI call/session API | ⬜ |
-| 17 — Twilio telephony provider | ⬜ |
-| 18 — Twilio webhooks | ⬜ |
-| 19 — Real outbound call | ⬜ |
-| 20 — Full end-to-end test | ⬜ |
+| 2 — State, Observation, Decision models | ✅ DONE |
+| 3 — Tool abstraction + tool registry | ✅ DONE |
+| 4 — SQLite, repositories, company services | ✅ DONE |
+| 5 — Mistral LLM provider | ✅ DONE |
+| 6 — Real Agent Loop | ✅ DONE |
+| 7 — Harness (runtime + policies) | ✅ DONE |
+| 8 — Guardrails + authorization + idempotency | ✅ DONE |
+| 9 — Observability + execution traces | ✅ DONE |
+| 10 — CLI text simulator | ✅ DONE |
+| 11 — Evaluation framework | ✅ DONE |
+| 12 — Test suite | ✅ DONE |
+| 13 — faster-whisper STT | ✅ DONE |
+| 14 — Piper TTS | ✅ DONE |
+| 15 — Local voice pipeline | ✅ DONE |
+| 16 — FastAPI call/session API | ✅ DONE |
+| 17 — Twilio telephony provider | ✅ DONE |
+| 18 — Twilio webhooks | ✅ DONE |
+| 19 — Real outbound call | ✅ DONE |
+| 20 — Full end-to-end test | ✅ DONE |
 
 ## Quick Start (Phase 1 — text mode only)
 
