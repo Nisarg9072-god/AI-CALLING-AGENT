@@ -1,126 +1,135 @@
 """
-Agent prompts — system prompt builder and observation formatter.
+System prompt construction for the agent's LLM reasoning step.
 
-These are the only place where natural language instructions live.
-Keeping prompts here makes them easy to iterate on without touching logic.
+The prompt explains to Mistral:
+  - Its role (reasoning component, NOT executor)
+  - What it can and cannot do
+  - Available tools
+  - The decision format it must output
+
+This is the only place we compose LLM prompts.
 """
 
 from __future__ import annotations
 
-from typing import Any
+from app.agent.observation import Observation
+from app.tools.registry import ToolRegistry
 
-from app.agent.state import CallState
 
+_BASE_SYSTEM_PROMPT = """You are the reasoning component of an AI calling agent for a customer service system.
 
-SYSTEM_PROMPT_TEMPLATE = """\
-You are an AI customer service agent for ACME Corp, a consumer electronics company.
-You handle inbound customer calls with professionalism, empathy, and efficiency.
+## YOUR ROLE
 
-## Your Role
-- Understand the customer's request through active listening
-- Use the available tools to look up information and take actions
-- Never guess or fabricate data — always use tools to get real information
-- Escalate to a human when you cannot resolve the issue
+You are NOT a chatbot. You are the decision-making brain of an agentic loop.
 
-## Agentic Loop Rules
-You will be called repeatedly. Each call you receive:
-1. The current conversation history
-2. Results of any tools you called in the previous turn
-3. The current call state
+At each step you:
+1. Observe the current situation (customer message + any tool results)
+2. Decide what to do next (structured decision)
+3. The harness validates and executes your decision
+4. You receive the result as your next observation
+5. Repeat until the call is complete
 
-You MUST respond with a JSON decision following the exact schema provided.
-Never break out of the JSON format.
+## WHAT YOU CAN DO
 
-## Decision Actions
-- `speak`: Say something to the customer
-- `tool_call`: Call a company tool to get data or take action
-- `ask_clarification`: Ask the customer for more information
-- `escalate`: Transfer to a human agent
-- `end_call`: Gracefully close the call
+- speak            : Say something to the customer
+- tool_call        : Execute a registered tool to retrieve or update data
+- ask_clarification: Ask the customer for more information
+- escalate         : Transfer to a human agent
+- end_call         : End the call gracefully
 
-## Verification Rules
-- You MUST verify the customer's identity with their 4-digit PIN before accessing sensitive data
-- Use `verify_customer` before any account changes or sensitive queries
-- If verification fails after 3 attempts, escalate to a human
+## WHAT YOU MUST NEVER DO
 
-## Tool Usage Rules
-- Only call tools that are listed in the AVAILABLE TOOLS section below
-- Always examine tool results before deciding what to do next
-- If a tool fails, explain to the customer and try an alternative approach
-- Never call the same tool with the same arguments twice
+- Invent data not returned by a tool
+- Claim an action succeeded without tool confirmation
+- Bypass customer identity verification for sensitive operations
+- Access databases directly (you cannot — use tools)
+- Make up order IDs, tracking numbers, or delivery dates
+- Assume a tool call succeeded without seeing its result
 
-## Current Call State
-Call ID: {call_id}
-Customer Phone: {customer_phone}
-Customer ID: {customer_id}
-Verification Status: {verification_status}
-Current Turn: {current_iteration}
+## TOOL USAGE RULES
 
-## Available Tools
-{tools_list}
+- Always use tools to retrieve real data before responding with facts
+- Wait for a tool result before claiming anything about orders, accounts, or tickets
+- If a tool fails, explain the failure honestly and decide on next steps
+- For sensitive operations (account changes, cancellations): verify identity first
 
-## Guidelines
-- Be concise but warm — this is a phone call, not a chat
-- If unsure, ask one clarifying question at a time
-- Always reason step by step (put reasoning in reasoning_summary)
-- confidence should reflect how certain you are about this decision
+## REASONING PRINCIPLES
+
+- Your next decision MUST account for any tool result in the current observation
+- If a tool returned an error, acknowledge it — don't pretend it succeeded
+- If the customer's request is unclear, ask for clarification
+- If you cannot help further, escalate to a human agent
+- Be concise and professional in all customer-facing responses
+- Never reveal internal system details (tool names, IDs, errors) to the customer
+
+## CUSTOMER VERIFICATION
+
+Some operations require customer identity verification.
+If you need to verify:
+1. Ask the customer for their PIN
+2. Call the verify_customer tool
+3. Wait for the result
+4. Only then proceed with the sensitive operation
+
+## ESCALATION
+
+Escalate when:
+- Customer explicitly requests a human
+- Multiple consecutive tool failures
+- Request is outside your capabilities
+- Authorization cannot be completed after reasonable attempts
 """
 
 
-def build_system_prompt(state: CallState, tool_schemas: list[dict[str, Any]]) -> str:
-    """Build the system prompt with current call state injected."""
-    tools_str = _format_tools(tool_schemas)
-    return SYSTEM_PROMPT_TEMPLATE.format(
-        call_id=state.call_id,
-        customer_phone=state.customer_phone or "unknown",
-        customer_id=state.customer_id or "not yet identified",
-        verification_status=state.verification_status.value,
-        current_iteration=state.current_iteration,
-        tools_list=tools_str,
+def build_system_prompt(
+    registry: ToolRegistry,
+    observation: Observation,
+) -> str:
+    """
+    Build the complete system prompt for a single agent iteration.
+
+    Includes:
+      - Base instructions
+      - Available tools (filtered by verification status)
+      - Current call context
+
+    Args:
+        registry: Tool registry (used to get tool descriptions).
+        observation: Current observation (for context and verification status).
+
+    Returns:
+        Complete system prompt string.
+    """
+    tool_descriptions = registry.tool_descriptions_for_prompt(
+        is_verified=observation.is_verified
     )
 
+    tools_section = "\n## AVAILABLE TOOLS\n\n"
+    if tool_descriptions:
+        for tool in tool_descriptions:
+            req_ver = " [REQUIRES VERIFICATION]" if tool.get("requires_verification") else ""
+            tools_section += f"### {tool['name']}{req_ver}\n"
+            tools_section += f"{tool['description']}\n"
+            params = tool.get("parameters", {}).get("properties", {})
+            if params:
+                tools_section += "Parameters:\n"
+                for param, info in params.items():
+                    required = param in tool.get("parameters", {}).get("required", [])
+                    req_str = " (required)" if required else " (optional)"
+                    tools_section += f"  - {param}: {info.get('type', 'any')}{req_str} — {info.get('description', '')}\n"
+            tools_section += "\n"
+    else:
+        tools_section += "No tools available at this time.\n"
 
-def _format_tools(schemas: list[dict[str, Any]]) -> str:
-    if not schemas:
-        return "No tools available."
-    lines = []
-    for schema in schemas:
-        params = schema.get("parameters", {})
-        props = params.get("properties", {})
-        required = params.get("required", [])
-        param_strs = []
-        for k, v in props.items():
-            req = " (required)" if k in required else " (optional)"
-            desc = v.get("description", "")
-            param_strs.append(f"    - {k}{req}: {desc}")
-        params_block = "\n".join(param_strs) if param_strs else "    (no parameters)"
-        lines.append(f"- **{schema['name']}**: {schema['description']}\n{params_block}")
-    return "\n".join(lines)
+    context_section = f"""
+## CURRENT CALL CONTEXT
 
+- Call ID: {observation.call_id}
+- Customer verified: {observation.is_verified}
+- Turns remaining: {observation.turns_remaining}
+- Tool calls remaining: {observation.tool_calls_remaining}
+"""
+    if observation.customer_name:
+        context_section += f"- Customer name: {observation.customer_name}\n"
 
-def build_observation(state: CallState, last_tool_result: dict[str, Any] | None = None) -> str:
-    """
-    Build the 'observation' message that the agent sees at the start of each iteration.
-    This is what 'Observe' means in the Observe→Decide→Act loop.
-    """
-    parts = []
-
-    if last_tool_result is not None:
-        if last_tool_result.get("success"):
-            parts.append(f"TOOL RESULT: {last_tool_result['data']}")
-        else:
-            parts.append(f"TOOL ERROR: {last_tool_result['error']}")
-
-    # Include recent conversation context
-    recent = state.recent_messages(8)
-    if recent:
-        history = []
-        for msg in recent:
-            history.append(f"{msg.role.upper()}: {msg.content}")
-        parts.append("CONVERSATION:\n" + "\n".join(history))
-
-    parts.append(f"STATE: verification={state.verification_status.value}, "
-                 f"turn={state.current_iteration}, "
-                 f"tools_used={state.tool_call_count}")
-
-    return "\n\n".join(parts)
+    return _BASE_SYSTEM_PROMPT + tools_section + context_section
