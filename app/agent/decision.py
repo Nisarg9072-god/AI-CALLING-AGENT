@@ -1,9 +1,13 @@
 """
-AgentDecision — the structured output every LLM call must return.
+AgentDecision — the structured output of every Mistral reasoning step.
 
-This is the contract between probabilistic reasoning (LLM) and deterministic
-execution (harness). The LLM must always produce a valid AgentDecision.
-The harness validates it before anything gets executed.
+Design rules:
+  - Every LLM response MUST be parsed into this model before anything executes.
+  - The harness validates this before executing any action.
+  - Invalid or malformed decisions are NEVER executed — they trigger recovery.
+  - Confidence is informational; the harness does NOT use it to bypass guardrails.
+
+This is the 'D' in Observe→Decide→Act.
 """
 
 from __future__ import annotations
@@ -18,58 +22,55 @@ from pydantic import BaseModel, Field, model_validator
 
 
 class ActionType(str, Enum):
-    SPEAK = "speak"                   # Produce a response to the customer
-    TOOL_CALL = "tool_call"           # Call a company data/action tool
-    ASK_CLARIFICATION = "ask_clarification"  # Ask customer for more info
-    WAIT = "wait"                     # Pause (e.g., waiting for async op)
-    ESCALATE = "escalate"             # Transfer to a human agent
-    END_CALL = "end_call"             # Gracefully end the call
+    SPEAK = "speak"                     # Generate a spoken/text response to the user
+    TOOL_CALL = "tool_call"             # Execute a registered tool
+    ASK_CLARIFICATION = "ask_clarification"  # Request more info from the user
+    WAIT = "wait"                       # Wait for user input (no response needed)
+    ESCALATE = "escalate"               # Request human agent transfer
+    END_CALL = "end_call"               # Gracefully terminate the call
 
 
-# ── AgentDecision ──────────────────────────────────────────────────────────────
+# ── Decision model ─────────────────────────────────────────────────────────────
 
 
 class AgentDecision(BaseModel):
     """
-    Structured output from the LLM for every agent loop iteration.
+    Structured decision produced by Mistral at each agent iteration.
 
-    All fields are validated before the harness executes anything. This ensures
-    the LLM output is always parseable and safe — never free-form text.
+    Mistral outputs this as JSON. The harness validates it before any action runs.
+
+    Validation rules enforced here (not by the LLM):
+      - tool_call actions MUST have tool_name
+      - speak/ask_clarification/escalate/end_call MUST have response_text
+      - confidence must be 0.0–1.0
     """
 
-    action: ActionType = Field(
-        description="What the agent should do next"
-    )
-    tool_name: str | None = Field(
-        default=None,
-        description="Name of the tool to call (only when action=tool_call)"
-    )
-    arguments: dict[str, Any] | None = Field(
-        default=None,
-        description="Arguments to pass to the tool (only when action=tool_call)"
-    )
-    response_text: str | None = Field(
-        default=None,
-        description="Text to speak to the customer (when action=speak/ask_clarification/escalate/end_call)"
-    )
+    action: ActionType
+    tool_name: str | None = None
+    arguments: dict[str, Any] | None = None
+    response_text: str | None = None
     reasoning_summary: str = Field(
-        description="Brief explanation of why this decision was made — required for observability"
+        ...,
+        description="Brief explanation of why this decision was made. Always required.",
+        min_length=1,
     )
     confidence: float = Field(
         default=1.0,
         ge=0.0,
         le=1.0,
-        description="Agent's confidence in this decision (0.0–1.0)"
+        description="Agent's confidence in this decision (informational only).",
     )
 
     @model_validator(mode="after")
-    def validate_decision_consistency(self) -> "AgentDecision":
-        """Ensure the decision is internally consistent."""
+    def validate_action_fields(self) -> "AgentDecision":
+        """Enforce field requirements based on action type."""
         if self.action == ActionType.TOOL_CALL:
             if not self.tool_name:
-                raise ValueError("tool_name is required when action=tool_call")
-            if self.arguments is None:
-                self.arguments = {}
+                raise ValueError(
+                    "tool_name is required when action='tool_call'. "
+                    "Specify the exact registered tool name."
+                )
+
         if self.action in (
             ActionType.SPEAK,
             ActionType.ASK_CLARIFICATION,
@@ -77,53 +78,59 @@ class AgentDecision(BaseModel):
             ActionType.END_CALL,
         ):
             if not self.response_text:
-                raise ValueError(f"response_text is required when action={self.action}")
+                raise ValueError(
+                    f"response_text is required when action='{self.action.value}'. "
+                    "Provide the text to say to the customer."
+                )
         return self
 
 
-# ── Validated decision (post-guardrail) ────────────────────────────────────────
+# ── JSON schema for Mistral prompt injection ───────────────────────────────────
 
+# This schema is embedded in the system prompt so Mistral knows what to output.
+# It is also used for output validation.
 
-class ValidatedDecision(BaseModel):
-    """A decision that has passed guardrail checks. Used by the harness executor."""
-
-    decision: AgentDecision
-    idempotency_key: str
-    iteration: int
-
-    @property
-    def action(self) -> ActionType:
-        return self.decision.action
-
-    @property
-    def tool_name(self) -> str | None:
-        return self.decision.tool_name
-
-    @property
-    def arguments(self) -> dict[str, Any]:
-        return self.decision.arguments or {}
-
-    @property
-    def response_text(self) -> str | None:
-        return self.decision.response_text
-
-
-# ── JSON schema for structured LLM output ──────────────────────────────────────
-
-
-AGENT_DECISION_SCHEMA: dict[str, Any] = {
+DECISION_JSON_SCHEMA = {
     "type": "object",
     "properties": {
         "action": {
             "type": "string",
             "enum": [a.value for a in ActionType],
+            "description": "What the agent should do next.",
         },
-        "tool_name": {"type": ["string", "null"]},
-        "arguments": {"type": ["object", "null"]},
-        "response_text": {"type": ["string", "null"]},
-        "reasoning_summary": {"type": "string"},
-        "confidence": {"type": "number", "minimum": 0.0, "maximum": 1.0},
+        "tool_name": {
+            "type": ["string", "null"],
+            "description": "Required when action='tool_call'. Must be a registered tool name.",
+        },
+        "arguments": {
+            "type": ["object", "null"],
+            "description": "Tool arguments as a flat JSON object. Required when action='tool_call'.",
+        },
+        "response_text": {
+            "type": ["string", "null"],
+            "description": "Text to say to the customer. Required for speak/ask_clarification/escalate/end_call.",
+        },
+        "reasoning_summary": {
+            "type": "string",
+            "description": "One-sentence explanation of why you made this decision. Always required.",
+        },
+        "confidence": {
+            "type": "number",
+            "minimum": 0.0,
+            "maximum": 1.0,
+            "description": "Your confidence in this decision (0.0–1.0).",
+        },
     },
     "required": ["action", "reasoning_summary"],
-    "additionalProperties": False,
 }
+
+
+# ── Validation result ──────────────────────────────────────────────────────────
+
+
+class ValidationResult(BaseModel):
+    """Result of harness validation on an AgentDecision."""
+    allowed: bool
+    decision: AgentDecision
+    block_reason: str | None = None      # Why it was blocked (if allowed=False)
+    modified: bool = False               # Whether the harness modified the decision
