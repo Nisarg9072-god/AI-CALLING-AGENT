@@ -1,5 +1,5 @@
-﻿"""
-CLI Simulator — the interactive terminal demo for the AI Calling Agent.
+"""
+CLI Simulator - the interactive terminal demo for the AI Calling Agent.
 
 Run with:  python -m app.main
 Or:        python -m app.main --scenario order_status
@@ -8,7 +8,7 @@ Uses Rich for beautiful terminal output showing the full agent loop trace:
   [USER]     Customer message
   [THINK]    Agent reasoning
   [TOOL->]   Tool call dispatched
-  [←TOOL]   Tool result received
+  [TOOL]   Tool result received
   [AGENT]    Agent response spoken
   [END]      Call terminated
 """
@@ -41,7 +41,7 @@ app = typer.Typer(
 
 console = Console()
 
-# ── Color palette ──────────────────────────────────────────────────────────────
+#  Color palette 
 COLORS = {
     "user": "bold cyan",
     "agent": "bold green",
@@ -54,7 +54,7 @@ COLORS = {
 }
 
 
-# ── Display helpers ────────────────────────────────────────────────────────────
+#  Display helpers 
 
 
 def print_header() -> None:
@@ -93,7 +93,7 @@ def print_trace_summary(trace_events: list) -> None:
         if etype == "AGENT_DECISION":
             detail = f"action={payload.get('action')} | {payload.get('reasoning', '')[:60]}"
         elif etype in ("TOOL_REQUESTED", "TOOL_COMPLETED"):
-            detail = f"{payload.get('tool_name', '')} — {str(payload.get('data', payload.get('arguments', '')))[:60]}"
+            detail = f"{payload.get('tool_name', '')} - {str(payload.get('data', payload.get('arguments', '')))[:60]}"
         elif etype == "TOOL_FAILED":
             detail = f"[red]{payload.get('error', '')[:60]}[/red]"
         elif etype == "GUARDRAIL_BLOCKED":
@@ -101,9 +101,9 @@ def print_trace_summary(trace_events: list) -> None:
         elif etype == "AGENT_RESPONSE":
             detail = payload.get("text", "")[:60]
         elif etype == "VERIFICATION_SUCCESS":
-            detail = "[green]✓ Customer verified[/green]"
+            detail = "[green] Customer verified[/green]"
         elif etype == "VERIFICATION_FAILED":
-            detail = f"[red]✗ Attempt {payload.get('attempt', '?')}[/red]"
+            detail = f"[red] Attempt {payload.get('attempt', '?')}[/red]"
         elif etype == "ESCALATION":
             detail = payload.get("reason", payload.get("text", ""))[:60]
         elif etype == "CALL_ENDED":
@@ -113,11 +113,11 @@ def print_trace_summary(trace_events: list) -> None:
 
     if table.row_count:
         console.print()
-        console.print("[dim]── Execution Trace ──[/dim]")
+        console.print("[dim] Execution Trace [/dim]")
         console.print(table)
 
 
-# ── Interactive mode ───────────────────────────────────────────────────────────
+#  Interactive mode 
 
 
 def run_interactive(phone: str = "+1-555-0101") -> None:
@@ -155,20 +155,19 @@ def run_interactive(phone: str = "+1-555-0101") -> None:
     print_separator("Call complete")
 
     # Show conversation
-    console.print("\n[bold]📞 Full Conversation:[/bold]\n")
+    console.print("\n[bold] Full Conversation:[/bold]\n")
     for msg in final_state.conversation_history:
         role = msg.role.value.upper()
         if role == "USER":
-            console.print(f"  [bold cyan]CUSTOMER ▶[/bold cyan] {msg.content}")
+            console.print(f"  [bold cyan]CUSTOMER [/bold cyan] {msg.content}")
         elif role == "ASSISTANT":
-            console.print(f"  [bold green]  AGENT ▶[/bold green] {msg.content}")
+            console.print(f"  [bold green]  AGENT [/bold green] {msg.content}")
         elif role == "TOOL":
-            console.print(f"  [dim yellow]   TOOL ▶[/dim yellow] {msg.content}")
+            console.print(f"  [dim yellow]   TOOL [/dim yellow] {msg.content}")
 
     # Show outcome
     console.print()
     outcome_color = {
-        TerminationReason.RESOLVED: "green",
         TerminationReason.AGENT_END: "green",
         TerminationReason.ESCALATED: "yellow",
         TerminationReason.MAX_TURNS_REACHED: "red",
@@ -180,14 +179,14 @@ def run_interactive(phone: str = "+1-555-0101") -> None:
         f"[bold]Outcome:[/bold] {final_state.call_outcome or 'N/A'}\n"
         f"[bold]Turns:[/bold] {final_state.current_iteration} / {final_state.max_iterations}\n"
         f"[bold]Tool calls:[/bold] {final_state.tool_call_count} / {final_state.max_tool_calls}\n"
-        f"[bold]Verified:[/bold] {'✓' if final_state.is_verified else '✗'}",
+        f"[bold]Verified:[/bold] {'' if final_state.is_verified else ''}",
         title="[bold]Call Summary[/bold]",
         border_style=outcome_color,
     ))
     console.print()
 
 
-# ── Typer commands ─────────────────────────────────────────────────────────────
+#  Typer commands 
 
 
 @app.command()

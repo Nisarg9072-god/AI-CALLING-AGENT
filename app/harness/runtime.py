@@ -89,12 +89,9 @@ class AgentRuntime:
         # ── Initialize components ─────────────────────────────────────────────
         trace = TraceLogger(state.call_id, trace_dir=self._trace_dir)
         registry = _build_registry()
-        agent = Agent(self._llm)
-        guardrails = GuardrailEngine(
-            available_tools=ALL_TOOL_NAMES,
-            sensitive_tools=VERIFICATION_REQUIRED_TOOLS,
-        )
-        loop = AgentLoop(agent, registry, guardrails, trace)
+        agent = Agent(llm=self._llm, registry=registry)
+        
+        loop = AgentLoop(agent, registry, on_event=trace)
 
         # ── Record call start ─────────────────────────────────────────────────
         trace.record(
@@ -105,7 +102,8 @@ class AgentRuntime:
 
         # ── Run loop ─────────────────────────────────────────────────────────
         try:
-            final_state = loop.run(state, initial_message)
+            state.latest_user_message = initial_message
+            final_state = loop.run(state)
         except Exception as exc:
             trace.record(EventType.ERROR, error=str(exc))
             state.terminate(TerminationReason.ERROR, outcome=str(exc))

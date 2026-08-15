@@ -57,7 +57,7 @@ class Agent:
             AgentDecision — always. Never raises.
         """
         system_prompt = build_system_prompt(self._registry, observation)
-        return self._llm.structured_decision(system_prompt, observation)
+        return self._llm.structured_decision(system_prompt, observation.messages)
 
     @property
     def provider_name(self) -> str:
