@@ -1,69 +1,52 @@
-"""
-Support tool — create_support_ticket, get_customer_tickets.
-"""
-
+"""Support tools: create_support_ticket, get_customer_tickets."""
 from __future__ import annotations
-
 from typing import Any
+from app.tools.base import BaseTool, ToolContext, ToolResult
+from app.company.service import CompanyService
 
-from app.company.service import get_service
-from app.tools.base import BaseTool, ToolResult
+_svc = CompanyService()
 
 
 class CreateSupportTicketTool(BaseTool):
     name = "create_support_ticket"
     description = (
-        "Create a new support ticket for a customer issue. "
-        "Use when the issue cannot be resolved immediately and needs follow-up. "
-        "Issue types: billing, technical, delivery, general."
+        "Create a support ticket for the customer's issue. "
+        "Use when the issue cannot be resolved immediately. "
+        "Returns ticket_id and status."
     )
     input_schema = {
         "type": "object",
         "properties": {
-            "customer_id": {
+            "customer_id": {"type": "string"},
+            "category": {
                 "type": "string",
-                "description": "The customer identifier",
+                "description": "Issue category: billing | shipping | technical | account | other",
             },
-            "issue_type": {
-                "type": "string",
-                "description": "Category: billing | technical | delivery | general",
-            },
-            "description": {
-                "type": "string",
-                "description": "Detailed description of the customer's issue",
-            },
+            "description": {"type": "string", "description": "Brief description of the issue"},
         },
-        "required": ["customer_id", "issue_type", "description"],
+        "required": ["customer_id", "category", "description"],
     }
     required_permissions: list[str] = []
 
-    def execute(self, arguments: dict[str, Any], context: dict[str, Any]) -> ToolResult:
-        try:
-            result = get_service().create_support_ticket(
-                customer_id=arguments["customer_id"],
-                issue_type=arguments["issue_type"],
-                description=arguments["description"],
-            )
-            return ToolResult.ok(result, tool_name=self.name)
-        except Exception as exc:
-            return ToolResult.fail(str(exc), tool_name=self.name)
+    def execute(self, arguments: dict[str, Any], context: ToolContext) -> ToolResult:
+        ticket = _svc.create_support_ticket(
+            arguments["customer_id"],
+            arguments["category"],
+            arguments["description"],
+        )
+        return ToolResult.ok(ticket, tool_name=self.name)
 
 
 class GetCustomerTicketsTool(BaseTool):
     name = "get_customer_tickets"
-    description = "Retrieve all support tickets for a specific customer."
+    description = "Get all support tickets for a customer."
     input_schema = {
         "type": "object",
-        "properties": {
-            "customer_id": {"type": "string", "description": "The customer identifier"},
-        },
+        "properties": {"customer_id": {"type": "string"}},
         "required": ["customer_id"],
     }
     required_permissions: list[str] = []
 
-    def execute(self, arguments: dict[str, Any], context: dict[str, Any]) -> ToolResult:
-        try:
-            tickets = get_service().get_tickets_for_customer(arguments["customer_id"])
-            return ToolResult.ok({"tickets": tickets, "count": len(tickets)}, tool_name=self.name)
-        except Exception as exc:
-            return ToolResult.fail(str(exc), tool_name=self.name)
+    def execute(self, arguments: dict[str, Any], context: ToolContext) -> ToolResult:
+        tickets = _svc.get_customer_tickets(arguments["customer_id"])
+        return ToolResult.ok({"tickets": tickets, "count": len(tickets)}, tool_name=self.name)
