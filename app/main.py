@@ -1,4 +1,4 @@
-"""
+﻿"""
 CLI Simulator — the interactive terminal demo for the AI Calling Agent.
 
 Run with:  python -m app.main
@@ -7,7 +7,7 @@ Or:        python -m app.main --scenario order_status
 Uses Rich for beautiful terminal output showing the full agent loop trace:
   [USER]     Customer message
   [THINK]    Agent reasoning
-  [TOOL→]   Tool call dispatched
+  [TOOL->]   Tool call dispatched
   [←TOOL]   Tool result received
   [AGENT]    Agent response spoken
   [END]      Call terminated
@@ -60,8 +60,8 @@ COLORS = {
 def print_header() -> None:
     console.print()
     console.print(Panel.fit(
-        "[bold white]🤖  AI CALLING AGENT[/bold white]\n"
-        "[dim]Agentic  Observe → Decide → Act  Loop Demo[/dim]\n"
+        "[bold white]  AI CALLING AGENT[/bold white]\n"
+        "[dim]Agentic  Observe -> Decide -> Act  Loop Demo[/dim]\n"
         "[dim]Type your message and press Enter. Type 'quit' to exit.[/dim]",
         border_style="bright_blue",
         padding=(1, 4),
@@ -129,7 +129,7 @@ def run_interactive(phone: str = "+1-555-0101") -> None:
 
     # Get first message from user
     try:
-        console.print("[bold cyan]YOU →[/bold cyan] ", end="")
+        console.print("[bold cyan]YOU ->[/bold cyan] ", end="")
         first_message = input().strip()
     except (EOFError, KeyboardInterrupt):
         console.print("\n[dim]Call ended.[/dim]")
