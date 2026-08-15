@@ -65,7 +65,9 @@ class MockTelephonyProvider(TelephonyProvider):
             extra={"webhook_url": webhook_url},
         )
         self.calls_made.append(record.__dict__)
-        print(f"[MOCK TELEPHONY] Would call {to} → webhook: {webhook_url}")
+        print(
+            f"[MOCK TELEPHONY] Would call {to} -> webhook: {webhook_url}"
+        )
         return record
 
     def hang_up(self, call_sid: str) -> bool:

@@ -201,6 +201,11 @@ class AgentLoop:
             # ── Check if action terminated the loop ───────────────────────
             if state.finished:
                 break
+            
+            # If no tool was executed (e.g. SPEAK or ASK_CLARIFICATION), 
+            # the agent has addressed the user. Break the loop to wait for user input.
+            if last_tool_result is None:
+                break
 
         # ═══════════════════════════════════════════════════════════════════════
 
