@@ -31,6 +31,15 @@ from app.tools.factory import build_tool_registry
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 
+def _run_to_completion(loop: AgentLoop, state: CallState, provider: MockLLMProvider) -> LoopResult:
+    result = loop.run(state)
+    while not state.finished and provider._index < len(provider._responses):
+        state.latest_user_message = ''
+        r = loop.run(state)
+        result = r
+    return result
+
+
 def _make_loop(responses: list[AgentDecision]) -> tuple[AgentLoop, MockLLMProvider, CallState]:
     """Create a wired AgentLoop with MockLLMProvider and fresh state."""
     registry = build_tool_registry()
@@ -50,7 +59,7 @@ def _make_loop(responses: list[AgentDecision]) -> tuple[AgentLoop, MockLLMProvid
         max_iterations=20,
         max_tool_calls=10,
     )
-    state.current_user_message = "Hello"
+    state.latest_user_message = "Hello"
     return loop, provider, state
 
 
@@ -70,24 +79,24 @@ class TestSimpleLoop:
             _d(ActionType.SPEAK, response_text="Hello! How can I help you?"),
             _d(ActionType.END_CALL, response_text="Goodbye!"),
         ])
-        result = loop.run(state)
+        result = _run_to_completion(loop, state, provider)
         assert state.finished
         assert result.termination_reason == TerminationReason.AGENT_END
         assert result.turns == 2
 
     def test_end_call_terminates_immediately(self):
-        loop, _, state = _make_loop([
+        loop, provider, state = _make_loop([
             _d(ActionType.END_CALL, response_text="Goodbye!"),
         ])
-        result = loop.run(state)
+        result = _run_to_completion(loop, state, provider)
         assert state.finished
         assert result.turns == 1
 
     def test_escalate_terminates(self):
-        loop, _, state = _make_loop([
+        loop, provider, state = _make_loop([
             _d(ActionType.ESCALATE, response_text="Connecting you to a specialist."),
         ])
-        result = loop.run(state)
+        result = _run_to_completion(loop, state, provider)
         assert state.finished
         assert state.escalation_status == EscalationStatus.ESCALATED
         assert result.termination_reason == TerminationReason.ESCALATED
@@ -119,7 +128,7 @@ class TestAgenticLoop:
                response_text="Is there anything else?"),
         ])
 
-        result = loop.run(state)
+        result = _run_to_completion(loop, state, provider)
 
         # The loop ran 3 turns
         assert result.turns == 3
@@ -146,7 +155,7 @@ class TestAgenticLoop:
         from app.agent.observation import ToolResultSummary, build_observation
 
         state = CallState(customer_id="C001")
-        state.current_user_message = "What happened?"
+        state.latest_user_message = "What happened?"
 
         # Simulate a tool result from the previous iteration
         tool_result = ToolResultSummary(
@@ -188,9 +197,9 @@ class TestAgenticLoop:
             _d(ActionType.END_CALL,
                response_text="Is there anything else I can help with?"),
         ])
-        state.current_user_message = "Where is my order? I'd also like a callback."
+        state.latest_user_message = "Where is my order? I'd also like a callback."
 
-        result = loop.run(state)
+        result = _run_to_completion(loop, state, provider)
 
         assert result.turns == 5
         assert state.tool_call_count == 2
@@ -217,9 +226,9 @@ class TestAgenticLoop:
             _d(ActionType.END_CALL,
                response_text="Goodbye!"),
         ])
-        state.current_user_message = "I need to update my account."
+        state.latest_user_message = "I need to update my account."
 
-        result = loop.run(state)
+        result = _run_to_completion(loop, state, provider)
 
         # After verify_customer, state is updated
         assert state.is_verified
@@ -228,7 +237,7 @@ class TestAgenticLoop:
 
     def test_wrong_pin_does_not_verify(self):
         """Wrong PIN: verified=False remains False."""
-        loop, _, state = _make_loop([
+        loop, provider, state = _make_loop([
             _d(ActionType.TOOL_CALL,
                tool_name="verify_customer",
                arguments={"customer_id": "C001", "pin": "9999"}),
@@ -237,7 +246,7 @@ class TestAgenticLoop:
             _d(ActionType.END_CALL,
                response_text="Goodbye!"),
         ])
-        loop.run(state)
+        _run_to_completion(loop, state, provider)
         assert not state.is_verified
 
 
@@ -256,7 +265,7 @@ class TestGuardrails:
             _d(ActionType.END_CALL,
                response_text="Goodbye!"),
         ])
-        result = loop.run(state)
+        result = _run_to_completion(loop, state, provider)
         # Loop should have produced an ask_clarification instead
         # and then the mock provided end_call
         assert state.finished
@@ -265,14 +274,14 @@ class TestGuardrails:
 
     def test_sensitive_tool_blocked_without_verification(self):
         """cancel_order requires verification — must be blocked."""
-        loop, _, state = _make_loop([
+        loop, provider, state = _make_loop([
             _d(ActionType.TOOL_CALL,
                tool_name="cancel_order",   # Not registered, but in sensitive_tools
                arguments={"order_id": "ORD-1001"}),
             _d(ActionType.END_CALL,
                response_text="Goodbye!"),
         ])
-        loop.run(state)
+        _run_to_completion(loop, state, provider)
         # Blocked by guardrail (sensitive + unverified)
         # Even if it were registered, it would be blocked
         assert state.tool_call_count == 0
@@ -289,9 +298,9 @@ class TestGuardrails:
         loop = AgentLoop(agent=agent, registry=registry)
 
         state = CallState(max_iterations=5, max_tool_calls=10)
-        state.current_user_message = "Hello"
+        state.latest_user_message = "Hello"
 
-        result = loop.run(state)
+        result = _run_to_completion(loop, state, provider)
 
         assert state.finished
         assert result.termination_reason == TerminationReason.MAX_TURNS_REACHED
@@ -312,9 +321,8 @@ class TestGuardrails:
         loop = AgentLoop(agent=agent, registry=registry)
 
         state = CallState(max_iterations=50, max_tool_calls=3)
-        state.current_user_message = "Check my order"
-
-        loop.run(state)
+        state.latest_user_message = "Check my order"
+        _run_to_completion(loop, state, provider)
 
         assert state.finished
         # The loop hit the tool limit (or runs out and MockLLMProvider gives END_CALL)
@@ -323,7 +331,7 @@ class TestGuardrails:
 
     def test_idempotency_via_loop(self):
         """Same tool call twice → only executed once."""
-        loop, _, state = _make_loop([
+        loop, provider, state = _make_loop([
             _d(ActionType.TOOL_CALL,
                tool_name="get_order_status",
                arguments={"order_id": "ORD-1001"}),
@@ -333,7 +341,7 @@ class TestGuardrails:
             _d(ActionType.END_CALL,
                response_text="Done"),
         ])
-        loop.run(state)
+        _run_to_completion(loop, state, provider)
         assert state.tool_call_count == 1   # duplicate was idempotent
 
 
@@ -344,14 +352,14 @@ class TestGuardrails:
 
 class TestEventEmission:
     def test_events_emitted_in_order(self):
-        loop, _, state = _make_loop([
+        loop, provider, state = _make_loop([
             _d(ActionType.TOOL_CALL,
                tool_name="get_order_status",
                arguments={"order_id": "ORD-1001"}),
             _d(ActionType.SPEAK, response_text="Your order is shipped."),
             _d(ActionType.END_CALL, response_text="Goodbye!"),
         ])
-        loop.run(state)
+        _run_to_completion(loop, state, provider)
 
         events = [e[0] for e in loop._captured_events]  # type: ignore[attr-defined]
         assert "CALL_STARTED" in events
@@ -363,10 +371,10 @@ class TestEventEmission:
         assert "CALL_ENDED" in events
 
     def test_call_started_first(self):
-        loop, _, state = _make_loop([
+        loop, provider, state = _make_loop([
             _d(ActionType.END_CALL, response_text="Bye"),
         ])
-        loop.run(state)
+        _run_to_completion(loop, state, provider)
         events = [e[0] for e in loop._captured_events]  # type: ignore[attr-defined]
         assert events[0] == "CALL_STARTED"
         assert events[-1] == "CALL_ENDED"

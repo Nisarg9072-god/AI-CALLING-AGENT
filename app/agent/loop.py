@@ -104,7 +104,7 @@ class AgentLoop:
         Run the agent loop until the call is finished.
 
         Args:
-            state: Initial call state (already has current_user_message set).
+            state: Initial call state (already has latest_user_message set).
 
         Returns:
             LoopResult with summary of the call.
@@ -144,7 +144,7 @@ class AgentLoop:
             self._emit("AGENT_OBSERVATION", {
                 "call_id": state.call_id,
                 "iteration": state.current_iteration,
-                "user_message": state.current_user_message,
+                "user_message": state.latest_user_message,
                 "last_tool_result": last_tool_result.model_dump() if last_tool_result else None,
                 "is_verified": state.is_verified,
                 "available_tools": state.available_tools,
@@ -285,7 +285,7 @@ class AgentLoop:
         # ── SPEAK ─────────────────────────────────────────────────────────────
         if action == ActionType.SPEAK:
             text = decision.response_text or ""
-            state.current_agent_message = text
+            state.latest_agent_message = text
             state.add_message(MessageRole.ASSISTANT, text)
             self._emit("AGENT_RESPONSE", {
                 "call_id": state.call_id,
@@ -297,7 +297,7 @@ class AgentLoop:
         # ── ASK CLARIFICATION ─────────────────────────────────────────────────
         if action == ActionType.ASK_CLARIFICATION:
             text = decision.response_text or ""
-            state.current_agent_message = text
+            state.latest_agent_message = text
             state.add_message(MessageRole.ASSISTANT, text)
             self._emit("AGENT_RESPONSE", {
                 "call_id": state.call_id,
@@ -369,7 +369,7 @@ class AgentLoop:
         # ── ESCALATE ──────────────────────────────────────────────────────────
         if action == ActionType.ESCALATE:
             text = decision.response_text or "Let me transfer you to a specialist."
-            state.current_agent_message = text
+            state.latest_agent_message = text
             state.add_message(MessageRole.ASSISTANT, text)
             state.escalation_status = EscalationStatus.ESCALATED
             state.terminate(TerminationReason.ESCALATED, "Agent-initiated escalation.")
@@ -384,7 +384,7 @@ class AgentLoop:
         # ── END CALL ──────────────────────────────────────────────────────────
         if action == ActionType.END_CALL:
             text = decision.response_text or "Thank you for calling. Goodbye!"
-            state.current_agent_message = text
+            state.latest_agent_message = text
             state.add_message(MessageRole.ASSISTANT, text)
             state.terminate(TerminationReason.AGENT_END, "Agent ended call gracefully.")
             self._emit("AGENT_RESPONSE", {
