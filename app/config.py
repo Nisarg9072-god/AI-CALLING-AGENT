@@ -20,9 +20,9 @@ class Settings(BaseSettings):
     )
 
     # ── LLM Provider ──────────────────────────────────────────────────────────
-    llm_provider: str = Field(default="openai", description="LLM backend provider name")
+    llm_provider: str = Field(default="mistral", description="LLM backend provider name (mistral | openai | mock)")
     llm_api_key: str = Field(default="", description="API key for the LLM provider")
-    llm_model: str = Field(default="gpt-4o", description="Model name to use")
+    llm_model: str = Field(default="mistral-large-latest", description="Model name to use")
     llm_temperature: float = Field(default=0.2, description="Sampling temperature (lower = more deterministic)")
     llm_max_tokens: int = Field(default=1024, description="Maximum tokens in LLM response")
 
