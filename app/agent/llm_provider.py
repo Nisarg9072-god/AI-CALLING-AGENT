@@ -76,8 +76,8 @@ Respond with ONLY the JSON object. Nothing else.
     def __init__(self, api_key: str | None = None, model: str | None = None) -> None:
         from mistralai.client import Mistral
 
-        self._client = Mistral(api_key=api_key or settings.llm_api_key)
-        self._model = model or settings.llm_model
+        self._client = Mistral(api_key=api_key or settings.mistral_api_key)
+        self._model = model or settings.mistral_model
 
     def structured_decision(
         self,
@@ -130,8 +130,8 @@ class OpenAIProvider(LLMProvider):
     def __init__(self, api_key: str | None = None, model: str | None = None) -> None:
         from openai import OpenAI
 
-        self._client = OpenAI(api_key=api_key or settings.llm_api_key)
-        self._model = model or settings.llm_model
+        self._client = OpenAI(api_key=api_key or settings.mistral_api_key)
+        self._model = model or settings.mistral_model
 
     def structured_decision(
         self,

@@ -216,7 +216,7 @@ def info() -> None:
     table.add_column("Value", style="white")
 
     table.add_row("LLM Provider", settings.llm_provider)
-    table.add_row("LLM Model", settings.llm_model)
+    table.add_row("LLM Model", settings.mistral_model)
     table.add_row("Max Turns", str(settings.max_turns))
     table.add_row("Max Tool Calls", str(settings.max_tool_calls))
     table.add_row("Sensitive Tools", ", ".join(settings.sensitive_tools))
