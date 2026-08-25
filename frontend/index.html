@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AI Calling Agent — Voice Demo</title>
+  <meta name="description" content="Browser-based voice interface for the AI Calling Agent. Speak naturally and see the full agent reasoning trace in real time." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="app">
+    <!-- ── Header ── -->
+    <header class="header">
+      <div class="header-content">
+        <div class="logo">
+          <div class="logo-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/>
+              <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+              <line x1="12" y1="19" x2="12" y2="23"/>
+              <line x1="8" y1="23" x2="16" y2="23"/>
+            </svg>
+          </div>
+          <div>
+            <h1 class="logo-title">AI Calling Agent</h1>
+            <p class="logo-sub">Observe &rarr; Decide &rarr; Act</p>
+          </div>
+        </div>
+        <div class="header-status">
+          <div class="status-pill" id="connection-status">
+            <span class="status-dot"></span>
+            <span class="status-text">Disconnected</span>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <!-- ── Main layout ── -->
+    <main class="main">
+      <!-- Left panel: Controls + Transcript -->
+      <section class="panel panel-left">
+
+        <!-- Phone + Controls -->
+        <div class="card controls-card">
+          <h2 class="card-title">New Call</h2>
+          <div class="input-group">
+            <label for="phone-input" class="input-label">Phone Number (E.164)</label>
+            <input id="phone-input" type="tel" class="input" placeholder="+919537266092" value="+919537266092" />
+          </div>
+
+          <div class="btn-row">
+            <button id="start-btn" class="btn btn-primary" onclick="startCall()">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="btn-icon">
+                <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.79 19.79 0 0 1 2.12 4.18 2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/>
+              </svg>
+              Start Call
+            </button>
+            <button id="end-btn" class="btn btn-danger" onclick="endCall()" disabled>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="btn-icon">
+                <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+              </svg>
+              End Call
+            </button>
+          </div>
+
+          <!-- Mic indicator -->
+          <div class="mic-section">
+            <div class="mic-status" id="mic-status">
+              <div class="mic-icon" id="mic-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/>
+                  <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+                </svg>
+              </div>
+              <div class="mic-info">
+                <span class="mic-label" id="mic-label">Microphone</span>
+                <span class="mic-detail" id="mic-detail">Not connected</span>
+              </div>
+              <div class="mic-level-container">
+                <div class="mic-level-bar" id="mic-level"></div>
+              </div>
+            </div>
+
+            <button id="record-btn" class="btn btn-record" onclick="toggleRecording()" disabled>
+              <svg id="record-icon-mic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="btn-icon">
+                <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/>
+                <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+                <line x1="12" y1="19" x2="12" y2="23"/>
+                <line x1="8" y1="23" x2="16" y2="23"/>
+              </svg>
+              <svg id="record-icon-stop" viewBox="0 0 24 24" fill="currentColor" class="btn-icon hidden">
+                <rect x="6" y="6" width="12" height="12" rx="2"/>
+              </svg>
+              <span id="record-label">Hold to Speak</span>
+            </button>
+          </div>
+
+          <!-- Text fallback -->
+          <div class="text-input-section" id="text-section" style="display:none">
+            <div class="input-group">
+              <label class="input-label">Or type a message</label>
+              <div class="text-input-row">
+                <input id="text-input" type="text" class="input" placeholder="Type your message..." onkeydown="handleTextKey(event)" />
+                <button class="btn btn-small btn-primary" onclick="sendText()">Send</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Transcript -->
+        <div class="card transcript-card">
+          <div class="card-header">
+            <h2 class="card-title">Transcript</h2>
+            <span class="badge" id="turn-badge">Turn 0</span>
+          </div>
+          <div class="transcript" id="transcript">
+            <div class="transcript-empty">
+              <p>Start a call to see the conversation transcript here.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Right panel: Agent Trace -->
+      <section class="panel panel-right">
+        <div class="card trace-card">
+          <div class="card-header">
+            <h2 class="card-title">Agent Trace</h2>
+            <div class="trace-controls">
+              <span class="badge badge-green" id="iteration-badge">Iteration 0</span>
+              <button class="btn btn-tiny" onclick="clearTrace()">Clear</button>
+            </div>
+          </div>
+
+          <!-- Current action indicator -->
+          <div class="current-action" id="current-action" style="display:none">
+            <div class="action-spinner"></div>
+            <span id="current-action-text">Processing...</span>
+          </div>
+
+          <!-- Trace events list -->
+          <div class="trace-list" id="trace-list">
+            <div class="trace-empty">
+              <p>Agent reasoning trace will appear here during a call.</p>
+              <p class="trace-hint">Each agent iteration shows:<br/>OBSERVE &rarr; DECIDE &rarr; ACT &rarr; RESULT</p>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <!-- ── Footer ── -->
+    <footer class="footer">
+      <span>AI Calling Agent &bull; faster-whisper STT &bull; Piper TTS &bull; Mistral AI</span>
+      <span id="latency-display"></span>
+    </footer>
+  </div>
+
+  <script src="voice.js"></script>
+</body>
+</html>

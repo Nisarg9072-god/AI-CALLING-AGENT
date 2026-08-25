@@ -29,12 +29,16 @@ dependencies = [
     "aiosqlite>=0.20.0",
     "alembic>=1.13.0",
 
-    # Telephony — Twilio (optional, isolated behind abstraction)
-    "twilio>=9.0.0",
+    # Telephony -- Twilio is OPTIONAL, isolated behind abstraction
+    # Install only if you need Twilio: uv pip install -e ".[twilio]"
+    # "twilio>=9.0.0",
 
-    # Voice — STT (faster-whisper) and TTS (piper-tts)
-    # NOTE: faster-whisper and piper-tts require separate installation
-    # See docs/voice.md for setup instructions.
+    # Voice -- STT (faster-whisper) and TTS (piper-tts)
+    # Install separately: uv pip install -e ".[voice]"
+    # See docs/local-voice.md for setup instructions
+
+    # WebSocket support (for browser voice UI)
+    "websockets>=12.0",
 
     # Observability
     "rich>=13.7.0",
@@ -59,11 +63,21 @@ dev = [
 ]
 
 voice = [
-    # Local STT — requires: pip install faster-whisper
-    # faster-whisper>=1.0.0
+    # Local STT -- faster-whisper
+    "faster-whisper>=1.0.0",
 
-    # Local TTS — requires: pip install piper-tts
-    # piper-tts>=1.2.0
+    # Local TTS -- piper-tts
+    "piper-tts>=1.2.0",
+
+    # Audio I/O (local transport)
+    "sounddevice>=0.4.6",
+    "numpy>=1.24.0",
+    "audioop-lts>=0.2.1; python_version >= '3.13'",
+]
+
+twilio = [
+    # Optional Twilio telephony provider
+    "twilio>=9.0.0",
 ]
 
 [project.scripts]

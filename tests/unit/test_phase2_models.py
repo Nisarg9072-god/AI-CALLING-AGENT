@@ -252,7 +252,7 @@ class TestObservation:
 
     def test_build_observation_basic(self):
         state = self._state(customer_id="C001")
-        state.current_user_message = "Where is my order?"
+        state.latest_user_message = "Where is my order?"
         obs = build_observation(state)
         assert obs.latest_user_message == "Where is my order?"
         assert obs.customer_id == "C001"
@@ -262,7 +262,7 @@ class TestObservation:
     def test_build_observation_with_tool_result(self):
         """The KEY agentic test: tool result flows into next observation."""
         state = self._state()
-        state.current_user_message = "Can I schedule a callback?"
+        state.latest_user_message = "Can I schedule a callback?"
         tool_result = ToolResultSummary(
             tool_name="get_order_status",
             success=True,
@@ -312,7 +312,7 @@ class TestObservation:
 
     def test_observation_serializable(self):
         state = self._state()
-        state.current_user_message = "Test"
+        state.latest_user_message = "Test"
         obs = build_observation(state)
         data = obs.model_dump()
         obs2 = Observation(**data)

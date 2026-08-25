@@ -19,7 +19,7 @@ from __future__ import annotations
 from app.agent.decision import AgentDecision
 from app.agent.observation import Observation
 from app.agent.prompts import build_system_prompt
-from app.llm.base import LLMProvider
+from app.llm.base import LLMProvider  # canonical interface — takes Observation
 from app.tools.registry import ToolRegistry
 
 

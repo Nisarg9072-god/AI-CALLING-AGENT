@@ -17,7 +17,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-from app.agent.state import CallState, MessageRole
+from app.agent.state import CallState
 
 
 class ToolResultSummary(BaseModel):
@@ -39,6 +39,7 @@ class Observation(BaseModel):
     # ── Current turn ──────────────────────────────────────────────────────────
     iteration: int
     latest_user_message: str
+    current_goal: str | None = None
 
     # ── Recent conversation (last N turns for context) ────────────────────────
     recent_messages: list[dict[str, str]] = Field(default_factory=list)
@@ -62,7 +63,12 @@ class Observation(BaseModel):
 
     # ── Current call metadata ─────────────────────────────────────────────────
     call_id: str = ""
+    session_id: str = ""
     phone_number: str | None = None
+
+    # ── Execution Trace ───────────────────────────────────────────────────────
+    previous_actions: list[str] = Field(default_factory=list)
+    errors: list[str] = Field(default_factory=list)
 
 
 def build_observation(
@@ -92,7 +98,7 @@ def build_observation(
 
     return Observation(
         iteration=state.current_iteration,
-        latest_user_message=state.current_user_message,
+        latest_user_message=state.latest_user_message,
         recent_messages=recent,
         last_tool_result=last_tool_result,
         customer_name=state.customer_context.get("name"),
@@ -102,5 +108,8 @@ def build_observation(
         turns_remaining=state.turns_remaining,
         tool_calls_remaining=state.tool_calls_remaining,
         call_id=state.call_id,
+        session_id=state.session_id,
         phone_number=state.phone_number,
+        previous_actions=[f"{tc.tool_name}({tc.arguments})" for tc in state.tool_calls_made[-3:]],
+        errors=state.error_log[-3:],
     )

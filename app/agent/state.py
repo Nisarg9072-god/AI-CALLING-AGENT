@@ -11,12 +11,11 @@ Design rules:
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from enum import Enum
 from typing import Any
 
 from pydantic import BaseModel, Field
-
 
 # ── Enumerations ───────────────────────────────────────────────────────────────
 
@@ -58,7 +57,7 @@ class ConversationMessage(BaseModel):
     """A single turn in the conversation history."""
     role: MessageRole
     content: str
-    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(UTC))
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
@@ -72,7 +71,7 @@ class ToolCallRecord(BaseModel):
     error: str | None = None
     duration_ms: float = 0.0
     iteration: int
-    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
 class ExtractedEntity(BaseModel):
@@ -98,15 +97,20 @@ class CallState(BaseModel):
 
     # ── Identity ──────────────────────────────────────────────────────────────
     call_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    session_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     customer_id: str | None = None
     phone_number: str | None = None          # E.164 format, e.g. "+919537266092"
-    session_started_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    session_started_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
     # ── Conversation ──────────────────────────────────────────────────────────
     conversation_history: list[ConversationMessage] = Field(default_factory=list)
-    current_user_message: str = ""           # most recent user input
-    current_agent_message: str = ""          # most recent agent response
+    latest_user_message: str = ""            # most recent user input
+    latest_agent_message: str = ""           # most recent agent response
     current_intent: str | None = None        # inferred by LLM, recorded by harness
+
+    # ── Loop Tracking ─────────────────────────────────────────────────────────
+    current_observation: dict[str, Any] | None = None
+    current_decision: dict[str, Any] | None = None
 
     # ── Extracted data ────────────────────────────────────────────────────────
     extracted_entities: list[ExtractedEntity] = Field(default_factory=list)
