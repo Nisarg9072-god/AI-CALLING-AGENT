@@ -37,6 +37,7 @@ app = typer.Typer(
     name="ai-calling-agent",
     help="Agentic AI Customer Service Calling Agent",
     add_completion=False,
+    invoke_without_command=True,
 )
 
 console = Console()
@@ -174,12 +175,14 @@ def run_interactive(phone: str = "+1-555-0101") -> None:
         TerminationReason.ERROR: "red",
     }.get(final_state.termination_reason, "white")
 
+    termination_label = final_state.termination_reason.value if final_state.termination_reason else "completed"
+
     console.print(Panel.fit(
-        f"[bold]Termination:[/bold] [{outcome_color}]{final_state.termination_reason.value}[/{outcome_color}]\n"
-        f"[bold]Outcome:[/bold] {final_state.call_outcome or 'N/A'}\n"
+        f"[bold]Termination:[/bold] [{outcome_color}]{termination_label}[/{outcome_color}]\n"
+        f"[bold]Outcome:[/bold] {final_state.outcome or 'N/A'}\n"
         f"[bold]Turns:[/bold] {final_state.current_iteration} / {final_state.max_iterations}\n"
         f"[bold]Tool calls:[/bold] {final_state.tool_call_count} / {final_state.max_tool_calls}\n"
-        f"[bold]Verified:[/bold] {'' if final_state.is_verified else ''}",
+        f"[bold]Verified:[/bold] {'yes' if final_state.is_verified else 'no'}",
         title="[bold]Call Summary[/bold]",
         border_style=outcome_color,
     ))
@@ -201,8 +204,8 @@ def demo(
         console.print(f"\n[dim]Running single-shot: '{message}'[/dim]\n")
         final_state, trace = runtime.run(message, customer_phone=phone)
         print_trace_summary(trace.events)
-        console.print(f"\n[bold]Outcome:[/bold] {final_state.termination_reason.value}")
-        console.print(f"[bold]Call outcome:[/bold] {final_state.call_outcome}")
+        console.print(f"\n[bold]Outcome:[/bold] {final_state.termination_reason.value if final_state.termination_reason else 'completed'}")  
+        console.print(f"[bold]Call outcome:[/bold] {final_state.outcome}")
     else:
         run_interactive(phone=phone)
 
@@ -224,6 +227,13 @@ def info() -> None:
     console.print()
     console.print(table)
     console.print()
+
+
+@app.callback(invoke_without_command=True)
+def _default(ctx: typer.Context) -> None:
+    """Run interactive demo when no subcommand is provided."""
+    if ctx.invoked_subcommand is None:
+        run_interactive()
 
 
 if __name__ == "__main__":

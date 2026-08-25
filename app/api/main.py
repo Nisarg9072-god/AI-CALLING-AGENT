@@ -1,14 +1,17 @@
 """
-FastAPI application — Phase 16.
+FastAPI application.
 
 Endpoints:
-  POST /calls/start        - Start a new call session
-  POST /calls/{id}/message - Send a user message to an active session
-  GET  /calls/{id}/state   - Get current call state
-  POST /calls/{id}/end     - End a call session
-  GET  /health             - Health check
+  POST /calls              - Create a voice call session (phone number → session)
+  GET  /calls/{id}         - Get session state
+  DELETE /calls/{id}       - End a call session
+  WS   /ws/voice/{id}      - WebSocket voice stream
 
-For Twilio webhook handlers see app/api/webhooks.py (Phase 18).
+  POST /calls/start        - (legacy) Start a text call session
+  POST /calls/{id}/message - (legacy) Send text message
+  GET  /calls/{id}/state   - (legacy) Get call state
+  POST /calls/{id}/end     - (legacy) End call
+  GET  /health             - Health check
 """
 
 from __future__ import annotations
@@ -18,11 +21,14 @@ from typing import Any
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from app.agent.agent import Agent
 from app.agent.loop import AgentLoop
 from app.agent.state import CallState, MessageRole
+from app.api.voice_ws import router as voice_ws_router
+from app.api.calls import router as calls_router
 from app.config import settings
 from app.llm.factory import build_llm_provider
 from app.observability.logger import make_event_callback
@@ -48,11 +54,32 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="AI Calling Agent v2",
-    description="Genuinely agentic AI calling system with Observe→Decide→Act loop",
+    title="AI Calling Agent",
+    description="Agentic AI voice calling system with Observe->Decide->Act loop",
     version="2.0.0",
     lifespan=lifespan,
 )
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Include voice routers
+app.include_router(voice_ws_router)
+app.include_router(calls_router)
+
+# Serve browser voice UI from /frontend
+try:
+    import os
+    frontend_dir = os.path.join(os.path.dirname(__file__), "..", "..", "frontend")
+    if os.path.isdir(frontend_dir):
+        app.mount("/ui", StaticFiles(directory=frontend_dir, html=True), name="frontend")
+except Exception:
+    pass   # frontend not required for API operation
 
 app.add_middleware(
     CORSMiddleware,
@@ -121,7 +148,7 @@ async def start_call(request: StartCallRequest) -> StartCallResponse:
         max_iterations=settings.max_turns,
         max_tool_calls=settings.max_tool_calls,
     )
-    state.current_user_message = request.initial_message
+    state.latest_user_message = request.initial_message
     state.add_message(MessageRole.USER, request.initial_message)
 
     registry = app.state.registry
@@ -153,14 +180,14 @@ async def send_message(call_id: str, request: SendMessageRequest) -> SendMessage
         raise HTTPException(status_code=400, detail="Call session has already ended.")
 
     # Set user message and add to history
-    state.current_user_message = request.message
+    state.latest_user_message = request.message
     state.add_message(MessageRole.USER, request.message)
 
     # Run ONE pass of the loop (single-turn interaction)
     loop.run(state)
 
     return SendMessageResponse(
-        agent_response=state.current_agent_message,
+        agent_response=state.latest_agent_message,
         finished=state.finished,
         tool_calls=state.tool_call_count,
         turns=state.current_iteration,

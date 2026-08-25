@@ -67,6 +67,14 @@ PHONE USER
     TWILIO / LOCAL SPEAKER
 ```
 
+## Features
+
+*   **Real-time Voice Pipeline**: Pluggable architecture supporting Local Mic, WebSockets, SIP, and GSM.
+*   **100% Free Local AI Audio**: Uses `faster-whisper` for STT and `Piper` for TTS. No cloud audio fees.
+*   **Deterministic Guardrails**: Sensitive tools (e.g., `cancel_order`) absolutely require customer identity verification before execution. The LLM cannot bypass this.
+*   **Mistral AI Powered**: Optimized for Mistral's fast and cost-effective models (e.g., `mistral-small-latest`).
+*   **Twilio Ready (Optional)**: Includes an optional Twilio provider for easy cloud telephony.
+
 ## Separation of Concerns
 
 | Component | Role | Deterministic? |
@@ -102,22 +110,45 @@ PHONE USER
 | 19 — Real outbound call | ✅ DONE |
 | 20 — Full end-to-end test | ✅ DONE |
 
-## Quick Start (Phase 1 — text mode only)
+## Setup (Local Voice & API)
+
+Run the agent locally without paying for cloud STT, TTS, or telephony providers!
 
 ```bash
-# 1. Create venv and install
-uv venv --python 3.12
-uv pip install -e ".[dev]"
+# 1. Clone & install with voice dependencies
+git clone https://github.com/yourusername/ai-calling-agent.git
+cd ai-calling-agent
+uv pip install -e ".[voice]"
 
-# 2. Configure
-copy .env.example .env
-# Edit .env — set MISTRAL_API_KEY=your-real-key
+# 2. Download the Piper TTS voice model
+mkdir -p data/voices
+curl -L -o data/voices/en_US-amy-medium.onnx https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/amy/medium/en_US-amy-medium.onnx
+curl -L -o data/voices/en_US-amy-medium.onnx.json https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/amy/medium/en_US-amy-medium.onnx.json
 
-# 3. Verify config
-uv run python -c "from app.config import settings; print(settings)"
+# 3. Configure environment
+cp .env.example .env
+# Edit .env and set MISTRAL_API_KEY
+```
 
-# 4. Run checks
-uv run pytest tests/ -v
+## Running the Agent
+
+### Option 1: Browser Voice UI (Recommended)
+Start the server and open the web interface to speak to the agent and watch its reasoning trace in real-time.
+```bash
+uv run uvicorn app.api.main:app --reload
+# Open http://localhost:8000/ui in your browser
+```
+
+### Option 2: CLI Voice Test
+Run a pure terminal-based voice loop using your local microphone and speakers.
+```bash
+uv run python -m cli.voice_test
+```
+
+### Option 3: Text-based Interactive Simulator
+Test the agent logic via text.
+```bash
+uv run agent-cli
 ```
 
 ## Stack

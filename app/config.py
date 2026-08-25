@@ -73,21 +73,46 @@ class Settings(BaseSettings):
     twilio_phone_number: str = Field(default="", description="Twilio source phone number (E.164)")
     twilio_to_number: str = Field(default="", description="Default destination number (E.164)")
 
-    # ── Voice Pipeline ─────────────────────────────────────────────────────────
-    # Supported modes: "text" | "local" | "twilio"
-    voice_mode: str = Field(default="text", description="Voice mode (text | local | twilio)")
+    # ── Voice Pipeline ─────────────────────────────────────────────────────
+    # Transport: local | websocket | sip | gsm
+    # 'local' = no telephony provider required (default for development)
+    voice_mode: str = Field(default="text", description="Voice mode (text | local | websocket)")
+    voice_transport: str = Field(default="local", description="Voice transport (local | websocket | sip | gsm)")
 
-    # STT — faster-whisper (local, free)
-    stt_provider: str = Field(default="faster_whisper", description="STT provider")
-    stt_model: str = Field(default="base", description="Whisper model size (tiny | base | small | medium)")
-    stt_device: str = Field(default="cpu", description="Inference device (cpu | cuda)")
+    # Silence handling
+    silence_timeout_seconds: float = Field(default=5.0, ge=1.0, le=60.0)
 
-    # TTS — Piper (local, free)
-    tts_provider: str = Field(default="piper", description="TTS provider")
+    # STT — faster-whisper (local, free, no cloud)
+    stt_provider: str = Field(default="faster_whisper", description="STT provider (faster_whisper | mock)")
+    whisper_model: str = Field(default="small", description="Whisper model (tiny|base|small|medium|large-v3)")
+    whisper_device: str = Field(default="auto", description="Inference device (auto|cpu|cuda)")
+    whisper_compute_type: str = Field(default="auto", description="Compute type (auto|int8|float16|float32)")
+    whisper_language: str = Field(default="en", description="Language ISO 639-1 code")
+
+    # Legacy STT aliases (kept for backward compatibility)
+    stt_model: str = Field(default="small", description="Deprecated: use whisper_model")
+    stt_device: str = Field(default="cpu", description="Deprecated: use whisper_device")
+
+    # TTS — Piper (local, free, no cloud)
+    tts_provider: str = Field(default="piper", description="TTS provider (piper | mock)")
     piper_model_path: str = Field(
         default="./data/voices/en_US-amy-medium.onnx",
-        description="Path to Piper voice model file",
+        description="Path to Piper .onnx voice model file",
     )
+    piper_voice: str = Field(default="en_US-amy-medium", description="Piper voice name")
+
+    # ── SIP (optional — requires external SIP infrastructure) ─────────────────────
+    # See docs/sip.md for setup instructions.
+    sip_host: str = Field(default="", description="SIP server hostname")
+    sip_port: int = Field(default=5060, description="SIP server port")
+    sip_username: str = Field(default="", description="SIP username")
+    sip_password: str = Field(default="", description="SIP password -- never log this")
+    sip_trunk: str = Field(default="", description="SIP trunk name")
+
+    # ── GSM Gateway (optional — requires hardware) ────────────────────────────
+    # See docs/gsm.md and REAL_PHONE_SETUP.md for setup instructions.
+    gsm_gateway_host: str = Field(default="", description="GSM gateway hostname/IP")
+    gsm_gateway_port: int = Field(default=5060, description="GSM gateway port")
 
     # ── Observability ─────────────────────────────────────────────────────────
     log_level: str = Field(default="INFO")
