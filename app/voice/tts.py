@@ -135,12 +135,13 @@ class PiperProvider(TTSProvider):
 
     def _synthesize_python(self, text: str) -> AudioFrame:
         """Use piper-tts Python package directly."""
+        from piper.voice import SynthesisConfig
         buf = io.BytesIO()
         with wave.open(buf, "wb") as wf:
             wf.setnchannels(1)
             wf.setsampwidth(2)   # 16-bit
             wf.setframerate(self._sample_rate)
-            self._voice.synthesize(text, wf)
+            self._voice.synthesize_wav(text, wf, syn_config=SynthesisConfig(length_scale=0.85))
         buf.seek(0)
         return AudioFrame.from_wav_bytes(buf.read())
 
