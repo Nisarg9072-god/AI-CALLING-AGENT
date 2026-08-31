@@ -1,4 +1,4 @@
-# AI Calling Agent v2 !!
+# AI Calling Agent v2 
 
 A **genuinely agentic** AI calling system built with a real **Observe → Decide → Act** loop.
 
